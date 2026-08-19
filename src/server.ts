@@ -64,14 +64,14 @@ async function searchCompanies(
       throw new Error("BRIGHT_DATA_TOKEN not configured");
     }
 
-    // Search Google for companies in the industry
-    const searchQuery = `${industry} companies contact email ${country}`;
+    // Build search query targeting business directories and contact pages
+    const searchQuery = `${industry} companies "${country}" contact email -site:facebook.com -site:linkedin.com`;
 
     const response = await axios.post(
       "https://api.brightdata.com/request",
       {
         zone: "serp_api1",
-        url: `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`,
+        url: `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}&num=20`,
         format: "json",
         data_format: "json",
       },
@@ -80,27 +80,43 @@ async function searchCompanies(
           "Authorization": `Bearer ${brightDataToken}`,
           "Content-Type": "application/json",
         },
-        timeout: 30000,
-        auth: {
-          username: `brd-customer-${brightDataToken.split("-")[0]}`,
-          password: brightDataToken,
-        },
+        timeout: 60000,
       },
     );
 
-    // Extract emails from response
+    // Extract emails and domains from HTML
     const emails = new Set<string>();
-    const htmlContent = response.data?.results?.[0]?.html || "";
+    const body = response.data?.body || "";
 
-    // Simple email regex
-    const emailRegex = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/gi;
-    const matches = htmlContent.match(emailRegex);
+    // Match email addresses
+    const emailRegex = /([a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/gi;
+    const emailMatches = body.match(emailRegex) || [];
 
-    if (matches) {
-      matches.forEach((email: string) => emails.add(email.toLowerCase()));
-    }
+    emailMatches.forEach((email: string) => {
+      const normalized = email.toLowerCase();
+      if (!normalized.includes("google") && !normalized.includes("facebook")) {
+        emails.add(normalized);
+      }
+    });
 
-    const emailArray = Array.from(emails).slice(0, 10);
+    // Extract domain-based emails (info@, contact@, sales@)
+    const domainRegex = /(?:(?:https?:\/\/)?(?:www\.)?)?([a-zA-Z0-9-]+\.[a-zA-Z]{2,})/gi;
+    const domains = body.match(domainRegex) || [];
+
+    const uniqueDomains: Set<string> = new Set(
+      domains.map((d: string) => d.replace(/https?:\/\//gi, "").replace(/www\./gi, "").toLowerCase())
+    );
+
+    uniqueDomains.forEach((domain: string) => {
+      if (!domain.includes("google") && !domain.includes("facebook") && domain.length > 3) {
+        emails.add(`contact@${domain}`);
+        emails.add(`info@${domain}`);
+      }
+    });
+
+    const emailArray = Array.from(emails)
+      .filter(e => e.length > 5 && e.includes("@"))
+      .slice(0, 20);
 
     return emailArray.length > 0
       ? emailArray
