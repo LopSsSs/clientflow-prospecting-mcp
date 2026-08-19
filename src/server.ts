@@ -1,6 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import express from "express";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import axios from "axios";
 import nodemailer from "nodemailer";
 
@@ -128,87 +127,62 @@ async function sendEmails(emails: string[]): Promise<{ sent: number; failed: num
   return { sent, failed };
 }
 
-// Tool: Search companies
-server.setRequestHandler("tools/list", async () => ({
-  tools: [
-    {
-      name: "search_and_send",
-      description:
-        "Search companies by country, industry, and size, then send prospecting emails to all found contacts",
-      inputSchema: {
-        type: "object",
-        properties: {
-          country: {
-            type: "string",
-            description: "Country code or name (e.g., ES, Spain)",
-          },
-          industry: {
-            type: "string",
-            description: "Industry sector (e.g., tech, construction, gardening)",
-          },
-          employees_min: {
-            type: "number",
-            description: "Minimum company size",
-          },
-          employees_max: {
-            type: "number",
-            description: "Maximum company size",
-          },
-          send_emails: {
-            type: "boolean",
-            description: "Actually send emails (default: false, just preview)",
-          },
-        },
-        required: ["country", "industry", "employees_min", "employees_max"],
+// Register tool
+server.tool("search_and_send", {
+  description:
+    "Search companies by country, industry, and size, then send prospecting emails to all found contacts",
+  inputSchema: {
+    type: "object",
+    properties: {
+      country: {
+        type: "string",
+        description: "Country code or name (e.g., ES, Spain)",
+      },
+      industry: {
+        type: "string",
+        description: "Industry sector (e.g., tech, construction, gardening)",
+      },
+      employees_min: {
+        type: "number",
+        description: "Minimum company size",
+      },
+      employees_max: {
+        type: "number",
+        description: "Maximum company size",
+      },
+      send_emails: {
+        type: "boolean",
+        description: "Actually send emails (default: false, just preview)",
       },
     },
-  ],
-}));
-
-server.setRequestHandler("tools/call", async (request: any) => {
-  const { name, arguments: args } = request.params;
-
-  if (name === "search_and_send") {
+    required: ["country", "industry", "employees_min", "employees_max"],
+  },
+  execute: async (input: any) => {
     const emails = await searchCompanies(
-      args.country,
-      args.industry,
-      args.employees_min,
-      args.employees_max,
+      input.country,
+      input.industry,
+      input.employees_min,
+      input.employees_max,
     );
 
     let result = `Found ${emails.length} emails:\n\n${emails.join("\n")}\n\n`;
 
-    if (args.send_emails && emails.length > 0) {
+    if (input.send_emails && emails.length > 0) {
       const sendResult = await sendEmails(emails);
       result += `\nSent: ${sendResult.sent}, Failed: ${sendResult.failed}`;
     } else if (emails.length > 0) {
       result += `\nReady to send to ${emails.length} contacts. Add "send_emails: true" to actually send.`;
     }
 
-    return {
-      content: [{ type: "text", text: result }],
-    };
-  }
-
-  return { content: [{ type: "text", text: "Unknown tool" }] };
+    return result;
+  },
 });
 
-// Express setup
-const app = express();
-app.use(express.json());
-
-app.post("/mcp", async (req, res) => {
-  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-  res.on("close", () => transport.close());
+// Start server
+async function main() {
+  const transport = new StdioServerTransport();
   await server.connect(transport);
-  await transport.handleRequest(req, res, req.body);
-});
+  console.error("ClientFlow Prospecting MCP started");
+}
 
-app.get("/health", (_req, res) => {
-  res.json({ status: "ok", service: "prospecting-mcp" });
-});
-
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-  console.log(`Prospecting MCP running on port ${PORT}`);
-});
+main().catch(console.error);
