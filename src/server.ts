@@ -51,7 +51,7 @@ En 5 minutos estarás importando tu primer cliente y verás exactamente dónde s
 Saludos,
 El equipo de ClientFlow`;
 
-// Search companies via Bright Data API
+// Search companies via Bright Data SERP API
 async function searchCompanies(
   country: string,
   industry: string,
@@ -64,41 +64,56 @@ async function searchCompanies(
       throw new Error("BRIGHT_DATA_TOKEN not configured");
     }
 
+    // Search Google for companies in the industry
+    const searchQuery = `${industry} companies contact email ${country}`;
+
     const response = await axios.post(
-      "https://api.brightdata.com/datasets/deep_lookup/v1",
+      "https://api.brightdata.com/request",
       {
-        query: `${industry} companies ${country}`,
-        filters: {
-          employee_count: { min: employees_min, max: employees_max },
-          country: country,
-        },
-        limit: 50,
+        zone: "serp_api1",
+        url: `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`,
+        format: "json",
+        data_format: "json",
       },
       {
         headers: {
-          Authorization: `Bearer ${brightDataToken}`,
+          "Authorization": `Bearer ${brightDataToken}`,
           "Content-Type": "application/json",
         },
         timeout: 30000,
+        auth: {
+          username: `brd-customer-${brightDataToken.split("-")[0]}`,
+          password: brightDataToken,
+        },
       },
     );
 
-    const emails = response.data?.results
-      ?.map((item: any) => item.email || item.contact_email)
-      .filter((email: string) => email && email.includes("@")) || [];
+    // Extract emails from response
+    const emails = new Set<string>();
+    const htmlContent = response.data?.results?.[0]?.html || "";
 
-    return emails.length > 0
-      ? emails
+    // Simple email regex
+    const emailRegex = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/gi;
+    const matches = htmlContent.match(emailRegex);
+
+    if (matches) {
+      matches.forEach((email: string) => emails.add(email.toLowerCase()));
+    }
+
+    const emailArray = Array.from(emails).slice(0, 10);
+
+    return emailArray.length > 0
+      ? emailArray
       : [
-          "contact@company.com",
           "info@company.com",
+          "contact@company.com",
           "sales@company.com",
         ];
   } catch (error: any) {
     console.error("Bright Data API error:", error.message);
     return [
-      "contact@company.com",
       "info@company.com",
+      "contact@company.com",
       "sales@company.com",
     ];
   }
