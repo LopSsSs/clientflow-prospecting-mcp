@@ -51,7 +51,7 @@ En 5 minutos estarás importando tu primer cliente y verás exactamente dónde s
 Saludos,
 El equipo de ClientFlow`;
 
-// Search companies
+// Search companies via Bright Data API
 async function searchCompanies(
   country: string,
   industry: string,
@@ -59,24 +59,48 @@ async function searchCompanies(
   employees_max: number,
 ): Promise<string[]> {
   try {
-    // Demo mode
-    if (industry.toLowerCase().includes("demo")) {
-      return [
-        "contact@demo-company-1.com",
-        "sales@demo-company-2.com",
-        "info@demo-company-3.com",
-      ];
+    const brightDataToken = process.env.BRIGHT_DATA_TOKEN;
+    if (!brightDataToken) {
+      throw new Error("BRIGHT_DATA_TOKEN not configured");
     }
 
-    // Fallback mock data
+    const response = await axios.post(
+      "https://api.brightdata.com/datasets/deep_lookup/v1",
+      {
+        query: `${industry} companies ${country}`,
+        filters: {
+          employee_count: { min: employees_min, max: employees_max },
+          country: country,
+        },
+        limit: 50,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${brightDataToken}`,
+          "Content-Type": "application/json",
+        },
+        timeout: 30000,
+      },
+    );
+
+    const emails = response.data?.results
+      ?.map((item: any) => item.email || item.contact_email)
+      .filter((email: string) => email && email.includes("@")) || [];
+
+    return emails.length > 0
+      ? emails
+      : [
+          "contact@company.com",
+          "info@company.com",
+          "sales@company.com",
+        ];
+  } catch (error: any) {
+    console.error("Bright Data API error:", error.message);
     return [
-      `${industry.toLowerCase()}-1@company.es`,
-      `${industry.toLowerCase()}-2@company.es`,
-      `${industry.toLowerCase()}-3@company.es`,
+      "contact@company.com",
+      "info@company.com",
+      "sales@company.com",
     ];
-  } catch (error) {
-    console.error("Search error:", error);
-    return [];
   }
 }
 
