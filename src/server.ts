@@ -181,6 +181,23 @@ app.post("/search", async (req, res) => {
   }
 });
 
+// Test endpoint: send emails directly to provided list
+app.post("/test-send", async (req, res) => {
+  try {
+    const { emails } = req.body;
+
+    if (!Array.isArray(emails) || emails.length === 0) {
+      return res.status(400).json({ error: "emails array required" });
+    }
+
+    const result = await sendEmails(emails);
+    return res.json({ emails, sent: result.sent, failed: result.failed });
+  } catch (error) {
+    console.error("Error:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 // Health check
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", service: "clientflow-prospecting" });
